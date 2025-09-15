@@ -5,51 +5,74 @@
 #include <sys/wait.h>
 #include <string.h>
 
-int global = 0;
-
 void show_history(){
 	printf("I am displaying the history\n");
 }
 
+void display_info(){
+	//function to display child process pid, the time they were starting to execute and the duration for execution etc. 
+}
+
+char** read_command(char* command){
+	char* args[64];
+	int i = 0; 
+
+	token = strtok(command," \n");
+	while (token != NULL && i < 63){
+		args[i] = token;
+		i++;
+		token = strtok(NULL," \n");
+	}
+	args[i] = NULL;
+
+	return args;	
+}
+
 int create_process_and_run(char* command){
-	if (strcmp(command,"exit\n")==0){
-		return 0; //exit the shell
-	}
-	else if (strcmp(command,"history\n") == 0){
-		//show history of commands received
-		show_history();
+	if (strcmp(command,"exit\n") == 0){
+		//exit the shell
+		return 0;
 	}
 
-
-	int status = fork();
-	if (status < 0){
-		printf("Could not create child process!");
+	//to find number of commands (pipe separated)
+	char* commands[16];
+	int i = 0; 
+	char* token = strtok(command,"|\n");
+	while (token!= NULL && i < 16){
+		commands[i] = token;
+		i++;
+		token = strtok(NULL,"|\n");
 	}
-	else if (status == 0){
-		char *args[64];
-		int i = 0;
-
-		//loop to collect tokens from command separated by space or \n
-		char *token = strtok(command, " \n");
-		while (token != NULL && i < 63) {
-			if (strcmp(token,"|") == 0){
-				//pipes in input, do differently
-				printf("detected pipe in this input.\n");
-			}
-			else if (strcmp(token,"cd") == 0){
-				//cd detected, do differently
-				printf("cd detected\n");
-			}
-
-			args[i++] = token;
-			token = strtok(NULL," \n");
+	
+	if (i == 1){
+		//means no pipe, single command
+		char** args = read_command(commands[0]);
+		int status = fork();
+		if (status < 0){
+			printf("Could not create child process");
 		}
-
-		args[i] = NULL; // execvp requires NULL-terminated argv
-		execvp(args[0], args);
-
+		else if (status == 0){
+			//in the child process
+			if (strcmp(args[0],"cd")){
+				//need special handling for cd
+			}
+			else if (strcmp(args[0],"history")){
+				//need special handling for this
+				show_history();
+				exit(0);
+			}
+			else{
+				execvp(args[0], args);
+				exit(0);
+			}
+		}
+		
 	}
-
+	else{
+		printf("pipes exist!!!!!!!\n");
+		//pipes exist
+	}
+	
 	wait(NULL);
 	return status;
 } 
