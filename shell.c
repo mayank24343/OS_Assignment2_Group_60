@@ -14,10 +14,10 @@ void display_info(){
 }
 
 char** read_command(char* command){
-	char* args[64];
+	char** args = malloc(sizeof(char*)*64);
 	int i = 0; 
 
-	token = strtok(command," \n");
+	char* token = strtok(command," \n");
 	while (token != NULL && i < 63){
 		args[i] = token;
 		i++;
@@ -44,19 +44,20 @@ int create_process_and_run(char* command){
 		token = strtok(NULL,"|\n");
 	}
 	
+	int status = 0;
 	if (i == 1){
 		//means no pipe, single command
 		char** args = read_command(commands[0]);
-		int status = fork();
+		status = fork();
 		if (status < 0){
 			printf("Could not create child process");
 		}
 		else if (status == 0){
 			//in the child process
-			if (strcmp(args[0],"cd")){
+			if (strcmp(args[0],"cd") == 0){
 				//need special handling for cd
 			}
-			else if (strcmp(args[0],"history")){
+			else if (strcmp(args[0],"history") == 0){
 				//need special handling for this
 				show_history();
 				exit(0);
@@ -71,6 +72,32 @@ int create_process_and_run(char* command){
 	else{
 		printf("pipes exist!!!!!!!\n");
 		//pipes exist
+		int fd[i*2];
+		for (int j = 0; j < i; j++){
+			pipe(fd+j*2);
+		}
+		for (int j = 0; j <= i; j++){
+			status = fork();
+			if (status < 0){
+				printf("Error occurred\n");
+			}
+			else if (status == 0){
+				if (j > 0){
+					dup2(fd[(j-1)*2],STDIN_FILENO);
+				}
+				if (j < i){
+					dup2(fd[j*2+1],STDOUT_FILENO);
+				}
+			}
+			for(int j = 0; j < 2*i; j++){
+				close(fd[j]);
+			}
+			
+			char** args = read_command(commands[j]);
+			execvp(args[0], args);
+
+		}
+		
 	}
 	
 	wait(NULL);
