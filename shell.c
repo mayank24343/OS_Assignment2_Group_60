@@ -15,7 +15,7 @@ void display_info(){
 
 char** read_command(char* command){
 	char** args = malloc(sizeof(char*)*64);
-	int i = 0; 
+	int i = 0;
 
 	char* token = strtok(command," \n");
 	while (token != NULL && i < 63){
@@ -25,40 +25,7 @@ char** read_command(char* command){
 	}
 	args[i] = NULL;
 
-	return args;	
-}
-
-void execute_pipe(int index, int[] fd, int total, char** commands){
-	if (index < 0){
-		return;
-	}
-	//all processes except for the last one write on one end of the pipe
-	if (index < total-1){
-		dup2(fd[index*2+1],STDOUT_FILENO);
-	}
-	//all processes excpet first one read from one end of the pipe
-	if (index > 0){
-		dup2(fd[index*2], STDIN_FILENO);
-	}
-
-	//close all file directors
-	for (int i = 0; i < (total-1); i++){
-		close(fd[2*i]);
-		close(fd[2*i+1]);
-	}
-
-	int child2 = fork();
-	if (child2 < 0){
-		perror("Could not fork");
-	}
-	else if (child2 == 0){
-		//in the child2 process 
-		execute_pipe(index-1,fd,total,commands);
-		exit(0);
-	}
-	wait(NULL);
-	char** args = read_command(commands[index]);
-	execvp(args[0],args);	
+	return args;
 }
 
 int create_process_and_run(char* command){
@@ -69,14 +36,14 @@ int create_process_and_run(char* command){
 
 	//to find number of commands (pipe separated)
 	char* commands[16];
-	int i = 0; 
+	int i = 0;
 	char* token = strtok(command,"|\n");
 	while (token!= NULL && i < 16){
 		commands[i] = token;
 		i++;
 		token = strtok(NULL,"|\n");
 	}
-	
+
 	int status = 0;
 	if (i == 1){
 		//means no pipe, single command
@@ -100,23 +67,62 @@ int create_process_and_run(char* command){
 				exit(0);
 			}
 		}
-		
+		else{
+			wait(NULL);
+		}
+
 	}
 	else{
 		printf("pipes exist!!!!!!!\n");
 		//pipes exist
-		//write on 1, read from 0
-		int fd[(i-1)*2];
+		//write on 1, read from  0
+		int fd[(i-1)*2]; //i-1 pipes for i commands/processes
 		for (int j = 0; j < i-1; j++){
-			pipe(fd+2*j);
+			if (pipe(fd+j*2) < 0){
+				perror("pipe didnt work!");
+				exit(0);
+			}
 		}
-		execute_pipe(i,fd,i,commands);
-		
+		int pids[i];
+
+		for (int p_no = 0; p_no < i; p_no++){
+			int child = fork();
+			if (child < 0){
+				perror("Could not create child!");
+				exit(0);
+			}
+			else if (child == 0){
+				if (p_no > 0){
+					dup2(fd[(p_no-1)*2],STDIN_FILENO);
+				}
+				if (p_no < i-1){
+					dup2(fd[p_no*2+1],STDOUT_FILENO);
+				}
+				for (int j = 0; j < i-1; j++){
+					close(fd[j*2]);
+					close(fd[j*2+1]);
+				}
+				char** args = read_command(commands[p_no]);
+				execvp(args[0],args);
+				perror("child not executing the command using execvp!");
+				exit(0);
+			}
+			else{
+				pids[p_no] = child;
+			}
+		}
+		for (int j = 0; j < i-1; j++){
+			close(fd[j*2]);
+			close(fd[j*2+1]);
+		}
+		for (int j = 0; j < i; j++){
+			waitpid(pids[j],NULL,0);
+		}
+		status = 1;
 	}
-	
-	wait(NULL);
+
 	return status;
-} 
+}
 
 int launch(char* command){
 	int status;
