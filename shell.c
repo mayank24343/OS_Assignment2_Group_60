@@ -28,6 +28,39 @@ char** read_command(char* command){
 	return args;	
 }
 
+void execute_pipe(int index, int[] fd, int total, char** commands){
+	if (index < 0){
+		return;
+	}
+	//all processes except for the last one write on one end of the pipe
+	if (index < total-1){
+		dup2(fd[index*2+1],STDOUT_FILENO);
+	}
+	//all processes excpet first one read from one end of the pipe
+	if (index > 0){
+		dup2(fd[index*2], STDIN_FILENO);
+	}
+
+	//close all file directors
+	for (int i = 0; i < (total-1); i++){
+		close(fd[2*i]);
+		close(fd[2*i+1]);
+	}
+
+	int child2 = fork();
+	if (child2 < 0){
+		perror("Could not fork");
+	}
+	else if (child2 == 0){
+		//in the child2 process 
+		execute_pipe(index-1,fd,total,commands);
+		exit(0);
+	}
+	wait(NULL);
+	char** args = read_command(commands[index]);
+	execvp(args[0],args);	
+}
+
 int create_process_and_run(char* command){
 	if (strcmp(command,"exit\n") == 0){
 		//exit the shell
@@ -72,31 +105,12 @@ int create_process_and_run(char* command){
 	else{
 		printf("pipes exist!!!!!!!\n");
 		//pipes exist
-		int fd[i*2];
-		for (int j = 0; j < i; j++){
-			pipe(fd+j*2);
+		//write on 1, read from 0
+		int fd[(i-1)*2];
+		for (int j = 0; j < i-1; j++){
+			pipe(fd+2*j);
 		}
-		for (int j = 0; j <= i; j++){
-			status = fork();
-			if (status < 0){
-				printf("Error occurred\n");
-			}
-			else if (status == 0){
-				if (j > 0){
-					dup2(fd[(j-1)*2],STDIN_FILENO);
-				}
-				if (j < i){
-					dup2(fd[j*2+1],STDOUT_FILENO);
-				}
-			}
-			for(int j = 0; j < 2*i; j++){
-				close(fd[j]);
-			}
-			
-			char** args = read_command(commands[j]);
-			execvp(args[0], args);
-
-		}
+		execute_pipe(i,fd,i,commands);
 		
 	}
 	
