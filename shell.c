@@ -15,6 +15,7 @@ typedef struct{
 } Commands;
 
 int length(int n) {
+	//length of integer
     if (n == 0) {
         return 1;
     }
@@ -31,11 +32,21 @@ Commands history[100]; //array to store all commands used
 int count=0; //number of commands given
 
 void show_history(){
+	//show history with S.No and Command
 	int c=length(count);
 	printf("I am displaying the history\n");
 	for (int i = 0; i < count; i++){
 		printf("%*s",c-length(i)," ");
 		printf("%d   %s\n", i+1, history[i].command);
+	}
+}
+
+void cleanup_history(){
+	//cleanup history pid mallocs
+	for (int i = 0; i < count; i++){
+		if (history[i].pid != NULL){
+			free(history[i].pid);
+		}
 	}
 }
 
@@ -64,7 +75,12 @@ void display_info(){
 }
 
 char** read_command(char* command){
+	//take string command and return tokens (space separated words)
 	char** args = malloc(sizeof(char*)*64);
+	if (args == NULL){
+		perror("Could not allocate memory for args");
+		exit(0);
+	}
 	int i = 0;
 
 	char* token = strtok(command," \n");
@@ -73,14 +89,12 @@ char** read_command(char* command){
 		i++;
 		token = strtok(NULL," \n");
 	}
-	args[i] = NULL;
+	args[i] = NULL;//execvp takes NULL terminated
 
 	return args;
 }
 
 int create_process_and_run(char* command){
-	
-
 	//to find number of commands (pipe separated)
 	char* commands[16];
 	int i = 0;
@@ -115,7 +129,8 @@ int create_process_and_run(char* command){
 		time_t start_time = time(NULL);
 		pid_t pid = fork();
 		if (pid < 0){
-			printf("Could not create child process");
+			perror("Could not create child process");
+			exit(0);
 		}
 		else if (pid == 0){
 			//in the child process
@@ -126,6 +141,7 @@ int create_process_and_run(char* command){
 			}
 			else{
 				execvp(args[0], args);
+				perror("This should never have executed!!");
 				exit(0);
 			}
 		}
@@ -198,10 +214,13 @@ int create_process_and_run(char* command){
 		status = 1;
 	}
 
+	free(commands);
+	free(token);
 	return 1;
 }
 
 int launch(char* command){
+	//run command
 	int status;
 	status = create_process_and_run(command);
 	return status;
@@ -218,13 +237,15 @@ void shell_loop(){
 			//exit the shell
 			return;
 		}
-		strcpy(history[count].command, command);
-		status = launch(command);
+		strcpy(history[count].command, command);//store command in history
+		status = launch(command);//launch command
 		count++;
+		free(command); //free memory for cleanup
 	} while (status);
 }
 
 int main(){
 	shell_loop();
+	cleanup_history();
 	return 0;
 }
