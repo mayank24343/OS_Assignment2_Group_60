@@ -131,6 +131,7 @@ int create_process_and_run(char* command){
 				perror("cd");
 			}
 			gettimeofday(&end,NULL);
+			history[count].pid_count = 1; 
 			history[count].pid = malloc(sizeof(pid_t));
 			history[count].pid[0] = getpid();
 			history[count].start_time = start.tv_sec;
