@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -8,7 +8,8 @@
 
 typedef struct{
 	char command[1024];
-	pid_t pid;
+	pid_t* pid;
+	int pid_count;
 	time_t start_time;
 	double duration;
 } Commands;
@@ -18,9 +19,9 @@ int length(int n) {
         return 1;
     }
     int l = 0;
-    n = abs(n); 
+    n = abs(n);
     while (n > 0) {
-        n /= 10; // 
+        n /= 10;
         l++;
     }
     return l;
@@ -41,7 +42,7 @@ void show_history(){
 void display_info(){
 	int c=length(count);
 	if (c>3){
-		printf("%*s", c-3);
+		printf("%*s", c-3,"");
 	}
 	printf("PID   Start_time                 Duration   Commmand\n");
 	for (int i = 0; i < count; i++){
@@ -52,7 +53,12 @@ void display_info(){
 		else if (c>3){
 			printf("%*s",c-l," ");
 		}
-		printf("%d   %s   %.2f   %s\n", history[i].pid, ctime(history[i].start_time), history[i].duration, history[i].command);
+		char *t = ctime(&history[i].start_time);
+                t[strcspn(t, "\n")] = '\0';
+		for (int j = 0; j < history[i].pid_count; j++){
+			printf("%d ",history[i].pid[j]);
+		}
+		printf("   %s   %f   %s\n", t, history[i].duration, history[i].command);
 	}
 	//function to display child process pid, the time they were starting to execute and the duration for execution etc. 
 }
@@ -100,9 +106,13 @@ int create_process_and_run(char* command){
 			if (chdir (path)!= 0){
 				perror("cd");
 			}
+			history[count].pid = malloc(sizeof(pid_t));
+			history[count].pid[0] = getpid();
+			history[count].start_time = time(NULL);
+			history[count].duration = 0.0;
 			return 1;
 		}
-		time_t start_time = time(NULL)
+		time_t start_time = time(NULL);
 		pid_t pid = fork();
 		if (pid < 0){
 			printf("Could not create child process");
@@ -119,8 +129,10 @@ int create_process_and_run(char* command){
 				exit(0);
 			}
 		}
-		else{
-			history[count].pid=pid;
+		else{	
+			history[count].pid = malloc(sizeof(pid_t));
+			history[count].pid_count = 1;
+			history[count].pid[0]=pid;
 			history[count].start_time=start_time;
 			wait(NULL);
 			time_t end_time=time(NULL);
@@ -129,7 +141,6 @@ int create_process_and_run(char* command){
 
 	}
 	else{
-		printf("pipes exist!!!!!!!\n");
 		//pipes exist
 		//write on 1, read from  0
 		int fd[(i-1)*2]; //i-1 pipes for i commands/processes
@@ -140,7 +151,8 @@ int create_process_and_run(char* command){
 			}
 		}
 		int pids[i];
-
+		time_t start_time = time(NULL);
+		
 		for (int p_no = 0; p_no < i; p_no++){
 			int child = fork();
 			if (child < 0){
@@ -174,10 +186,19 @@ int create_process_and_run(char* command){
 		for (int j = 0; j < i; j++){
 			waitpid(pids[j],NULL,0);
 		}
+
+		time_t end_time = time(NULL);
+		history[count].pid = malloc(i*sizeof(pid_t));
+		for (int j = 0; j < i; j++){
+			history[count].pid[j] = pids[j];
+		}
+		history[count].pid_count = i;
+		history[count].start_time = start_time;
+		history[count].duration = difftime(end_time,start_time);
 		status = 1;
 	}
 
-	return status;
+	return 1;
 }
 
 int launch(char* command){
@@ -198,8 +219,8 @@ void shell_loop(){
 			return;
 		}
 		strcpy(history[count].command, command);
-		count++;
 		status = launch(command);
+		count++;
 	} while (status);
 }
 
