@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 
 typedef struct{
 	char command[1024];
@@ -13,6 +14,7 @@ typedef struct{
 	time_t start_time;
 	double duration;
 } Commands;
+
 
 int length(int n) {
 	//length of integer
@@ -34,7 +36,6 @@ int count=0; //number of commands given
 void show_history(){
 	//show history with S.No and Command
 	int c=length(count);
-	printf("I am displaying the history\n");
 	for (int i = 0; i < count; i++){
 		printf("%*s",c-length(i)," ");
 		printf("%d   %s\n", i+1, history[i].command);
@@ -74,6 +75,13 @@ void display_info(){
 	//function to display child process pid, the time they were starting to execute and the duration for execution etc. 
 }
 
+static void my_handler(int signal){
+	printf("caught ctrl+c/ SIGINT signal\n");
+	display_info();
+	cleanup_history();
+	exit(0);
+}
+
 char** read_command(char* command){
 	//take string command and return tokens (space separated words)
 	char** args = malloc(sizeof(char*)*64);
@@ -105,11 +113,13 @@ int create_process_and_run(char* command){
 		token = strtok(NULL,"|\n");
 	}
 
-	int status = 0;
+	int status = 1;
 	if (i == 1){
 		//means no pipe, single command
 		char** args = read_command(commands[0]);
 		if (strcmp(args[0],"cd") == 0){
+			struct timeval start, end;
+			gettimeofday(&start, NULL);
 			char* path;
 			if (args[1] == NULL){
 				path = getenv("HOME");
@@ -120,13 +130,15 @@ int create_process_and_run(char* command){
 			if (chdir (path)!= 0){
 				perror("cd");
 			}
+			gettimeofday(&end,NULL);
 			history[count].pid = malloc(sizeof(pid_t));
 			history[count].pid[0] = getpid();
-			history[count].start_time = time(NULL);
-			history[count].duration = 0.0;
+			history[count].start_time = start.tv_sec;
+			history[count].duration = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
 			return 1;
 		}
-		time_t start_time = time(NULL);
+		struct timeval start, end;
+		gettimeofday(&start, NULL);
 		pid_t pid = fork();
 		if (pid < 0){
 			perror("Could not create child process");
@@ -149,10 +161,10 @@ int create_process_and_run(char* command){
 			history[count].pid = malloc(sizeof(pid_t));
 			history[count].pid_count = 1;
 			history[count].pid[0]=pid;
-			history[count].start_time=start_time;
+			history[count].start_time=start.tv_sec;
 			wait(NULL);
-			time_t end_time=time(NULL);
-			history[count].duration=difftime(end_time, start_time);
+			gettimeofday(&end,NULL);
+			history[count].duration=(end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
 		}
 
 	}
@@ -167,7 +179,8 @@ int create_process_and_run(char* command){
 			}
 		}
 		int pids[i];
-		time_t start_time = time(NULL);
+		struct timeval start, end;
+		gettimeofday(&start, NULL);
 		
 		for (int p_no = 0; p_no < i; p_no++){
 			int child = fork();
@@ -203,20 +216,18 @@ int create_process_and_run(char* command){
 			waitpid(pids[j],NULL,0);
 		}
 
-		time_t end_time = time(NULL);
+		gettimeofday(&end,NULL);
 		history[count].pid = malloc(i*sizeof(pid_t));
 		for (int j = 0; j < i; j++){
 			history[count].pid[j] = pids[j];
 		}
 		history[count].pid_count = i;
-		history[count].start_time = start_time;
-		history[count].duration = difftime(end_time,start_time);
+		history[count].start_time = start.tv_sec;
+		history[count].duration = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
 		status = 1;
 	}
 
-	free(commands);
-	free(token);
-	return 1;
+	return status;
 }
 
 int launch(char* command){
@@ -245,6 +256,11 @@ void shell_loop(){
 }
 
 int main(){
+	struct sigaction sig;
+	memset(&sig,0,sizeof(sig));
+	sig.sa_handler = my_handler;
+	sigaction(SIGINT,&sig,NULL);
+	
 	shell_loop();
 	cleanup_history();
 	return 0;
