@@ -4,12 +4,56 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <time.h>
+
+typedef struct{
+	char command[1024];
+	pid_t pid;
+	time_t start_time;
+	double duration;
+} Commands;
+
+int length(int n) {
+    if (n == 0) {
+        return 1;
+    }
+    int l = 0;
+    n = abs(n); 
+    while (n > 0) {
+        n /= 10; // 
+        l++;
+    }
+    return l;
+}
+
+Commands history[100]; //array to store all commands used
+int count=0; //number of commands given
 
 void show_history(){
+	int c=length(count);
 	printf("I am displaying the history\n");
+	for (int i = 0; i < count; i++){
+		printf("%*s",c-length(i)," ");
+		printf("%d   %s\n", i+1, history[i].command);
+	}
 }
 
 void display_info(){
+	int c=length(count);
+	if (c>3){
+		printf("%*s", c-3);
+	}
+	printf("PID   Start_time                 Duration   Commmand\n");
+	for (int i = 0; i < count; i++){
+		int l=length(i);
+		if (l<3 && c<3){
+			printf("%*s",3-l," ");
+		}
+		else if (c>3){
+			printf("%*s",c-l," ");
+		}
+		printf("%d   %s   %.2f   %s\n", history[i].pid, ctime(history[i].start_time), history[i].duration, history[i].command);
+	}
 	//function to display child process pid, the time they were starting to execute and the duration for execution etc. 
 }
 
@@ -29,10 +73,7 @@ char** read_command(char* command){
 }
 
 int create_process_and_run(char* command){
-	if (strcmp(command,"exit\n") == 0){
-		//exit the shell
-		return 0;
-	}
+	
 
 	//to find number of commands (pipe separated)
 	char* commands[16];
@@ -48,16 +89,27 @@ int create_process_and_run(char* command){
 	if (i == 1){
 		//means no pipe, single command
 		char** args = read_command(commands[0]);
-		status = fork();
-		if (status < 0){
+		if (strcmp(args[0],"cd") == 0){
+			char* path;
+			if (args[1] == NULL){
+				path = getenv("HOME");
+			}
+			else{
+				path = args[1];
+			}
+			if (chdir (path)!= 0){
+				perror("cd");
+			}
+			return 1;
+		}
+		time_t start_time = time(NULL)
+		pid_t pid = fork();
+		if (pid < 0){
 			printf("Could not create child process");
 		}
-		else if (status == 0){
+		else if (pid == 0){
 			//in the child process
-			if (strcmp(args[0],"cd") == 0){
-				//need special handling for cd
-			}
-			else if (strcmp(args[0],"history") == 0){
+			if (strcmp(args[0],"history") == 0){
 				//need special handling for this
 				show_history();
 				exit(0);
@@ -68,7 +120,11 @@ int create_process_and_run(char* command){
 			}
 		}
 		else{
+			history[count].pid=pid;
+			history[count].start_time=start_time;
 			wait(NULL);
+			time_t end_time=time(NULL);
+			history[count].duration=difftime(end_time, start_time);
 		}
 
 	}
@@ -136,6 +192,13 @@ void shell_loop(){
 		printf("group60@os:~$");
 		char* command = (char*)malloc(1024*sizeof(char)); //1KB input
 		fgets(command,1024,stdin);
+		if (strcmp(command,"exit\n") == 0){
+			display_info();
+			//exit the shell
+			return;
+		}
+		strcpy(history[count].command, command);
+		count++;
 		status = launch(command);
 	} while (status);
 }
@@ -144,4 +207,3 @@ int main(){
 	shell_loop();
 	return 0;
 }
-
